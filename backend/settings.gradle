@@ -1,0 +1,6 @@
+plugins {
+    // 로컬에 JDK 21 이 없으면 툴체인(JDK 21)을 자동으로 내려받습니다. Gradle 실행 자체는 JDK 17 이상이 필요합니다.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'myshop'

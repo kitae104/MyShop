@@ -1,0 +1,10 @@
+{
+  "generator": "dev-harness",
+  "template": "s-r",
+  "addons": [],
+  "options": {},
+  "name": "myshop",
+  "javaPackage": "work.kitae104.myshop",
+  "createdAt": "2026-10-03",
+  "harnessCommit": "d65a4db"
+}

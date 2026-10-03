@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: myshop
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/myshop}
+    username: ${DB_USERNAME:myshop}
+    password: ${DB_PASSWORD:myshop}
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+app:
+  jwt:
+    # 운영 환경에서는 반드시 JWT_SECRET 환경 변수로 32바이트 이상의 임의 문자열을 지정하세요.
+    secret: ${JWT_SECRET:local-dev-secret-change-me-please-32bytes-or-more}
+    access-token-validity-seconds: ${JWT_ACCESS_TOKEN_VALIDITY_SECONDS:3600}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
