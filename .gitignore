@@ -27,3 +27,6 @@ frontend/dist/
 
 # 브라우저 자동화 도구가 남기는 스냅샷·스크린샷
 .playwright-mcp/
+
+# run.ps1 이 남기는 PID 파일과 로컬 실행 로그
+.run/
