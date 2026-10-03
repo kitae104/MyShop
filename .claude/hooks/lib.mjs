@@ -35,4 +35,5 @@ export function tail(text, lines = 60) {
   return text.trimEnd().split('\n').slice(-lines).join('\n')
 }
 
-export const gradlew = WIN ? 'gradlew.bat' : './gradlew'
+// NoDefaultCurrentDirectoryInExePath 가 설정된 Windows 는 cmd 가 현재 폴더를 찾지 않으므로 .\ 를 붙입니다.
+export const gradlew = WIN ? '.\\gradlew.bat' : './gradlew'

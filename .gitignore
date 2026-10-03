@@ -24,3 +24,6 @@ frontend/dist/
 # Claude Code (개인 설정, 훅 캐시)
 .claude/settings.local.json
 .claude/.verify-cache/
+
+# 브라우저 자동화 도구가 남기는 스냅샷·스크린샷
+.playwright-mcp/

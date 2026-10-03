@@ -63,6 +63,11 @@ cd frontend && npm run lint && npm run build
 | POST | `/api/auth/signup` | - | 회원가입 `{ email, password, name }` → 201 |
 | POST | `/api/auth/login` | - | 로그인 `{ email, password }` → `{ accessToken, tokenType, expiresIn, user }` |
 | GET | `/api/users/me` | Bearer | 내 정보 |
+| GET | `/api/posts?page=0&size=10` | Bearer | 게시글 목록 (최신순, `size` 최대 50) → `{ content, page, size, totalElements, totalPages }` |
+| GET | `/api/posts/{id}` | Bearer | 게시글 상세 (없으면 404) |
+| POST | `/api/posts` | Bearer | 게시글 작성 `{ title(100자 이하), content }` → 201, 작성자는 로그인 사용자 |
+| PUT | `/api/posts/{id}` | Bearer | 게시글 수정 `{ title, content }` (작성자만, 아니면 403) |
+| DELETE | `/api/posts/{id}` | Bearer | 게시글 삭제 → 204 (작성자만, 아니면 403) |
 | GET | `/actuator/health` | - | 헬스 체크 |
 
 에러 응답은 모두 `{ status, message, errors, timestamp }` 형식입니다 (`errors` 는 필드별 검증 메시지).
@@ -73,6 +78,7 @@ cd frontend && npm run lint && npm run build
 backend/src/main/java/work/kitae104/myshop/
 ├── auth/        # 회원가입·로그인 (AuthController, AuthService, dto)
 ├── user/        # User 엔티티, 저장소, /api/users/me
+├── post/        # 게시글 (Post, PostRepository, PostService, PostController, dto)
 ├── security/    # JWT 발급·검증, 인증 필터, UserDetailsService
 ├── config/      # SecurityConfig, CORS 설정
 └── common/      # ApiException, 전역 예외 처리
