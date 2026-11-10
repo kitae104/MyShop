@@ -5,29 +5,37 @@
 .DESCRIPTION
   start  : Docker 로 DB 를 올리고(healthy 까지 대기), 백엔드(gradlew bootRun)와
            프론트엔드(npm run dev)를 백그라운드로 실행합니다. 로그는 .run\ 에 쌓입니다.
-  stop   : 백엔드·프론트엔드 프로세스를 트리째 종료하고 DB 컨테이너를 중지합니다.
-           DB 데이터(볼륨)는 지우지 않습니다.
+  stop   : 모든 서버를 멈춥니다. 로컬 백엔드·프론트엔드 프로세스를 트리째 종료하고,
+           Docker 컨테이너(db, 그리고 make up 으로 띄운 backend·frontend)를 중지합니다.
+           컨테이너와 DB 데이터(볼륨)는 삭제하지 않습니다.
   status : 각 구성 요소의 상태를 보여 줍니다.
 
+  명령은 stop / --stop / -Stop 어느 형태로 써도 됩니다 (start, status 도 동일).
   실행 정책 때문에 막히면:  powershell -ExecutionPolicy Bypass -File .\run.ps1
 
 .PARAMETER Action
-  start(기본) | stop | status
+  start(기본) | stop | status. 앞에 -- 나 - 를 붙여도 됩니다.
 
 .PARAMETER KeepDb
-  stop 할 때 DB 컨테이너는 계속 실행해 둡니다.
+  stop 할 때 DB 컨테이너는 계속 실행해 둡니다. (--keep-db 도 가능)
 
 .EXAMPLE
   .\run.ps1
-  .\run.ps1 stop
+  .\run.ps1 --stop
   .\run.ps1 stop -KeepDb
-  .\run.ps1 status
+  .\run.ps1 --status
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('start', 'stop', 'status')]
-    [string]$Action = 'start',
-    [switch]$KeepDb
+    [Parameter(Position = 0)]
+    [string]$Action = '',
+    [switch]$Start,
+    [switch]$Stop,
+    [switch]$Status,
+    [switch]$KeepDb,
+    # PowerShell 은 --stop 같은 GNU 스타일 옵션을 매개변수로 인식하지 않고 일반 인자로 넘기므로 직접 해석합니다.
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest
 )
 
 # 네이티브 명령(docker, taskkill 등)의 stderr 출력이 예외로 바뀌지 않도록 Continue 로 두고,
@@ -160,11 +168,12 @@ function Show-LogTail([string]$Name) {
     }
 }
 
-function Get-DbState {
-    $id = (& docker compose ps -q db 2>$null | Select-Object -First 1)
+# compose 서비스(db, backend, frontend)의 컨테이너 상태. 컨테이너가 없거나 Docker 가 꺼져 있으면 '중지됨'.
+function Get-ComposeState([string]$Service) {
+    $id = (& docker compose ps -q $Service 2>$null | Select-Object -First 1)
     if (-not $id) { return '중지됨' }
     $state = (& docker inspect -f '{{.State.Status}} / {{.State.Health.Status}}' $id 2>$null)
-    if ($state) { return $state }
+    if ($state) { return ($state -replace ' / $', '') }
     return '중지됨'
 }
 
@@ -175,9 +184,11 @@ function Invoke-Status {
 
     Write-Host ''
     $dbPortInfo = if ($pids -and $pids.dbPort) { "  (localhost:$($pids.dbPort))" } else { '' }
-    Write-Host ("DB        : {0}{1}" -f (Get-DbState), $dbPortInfo)
-    Write-Host ("백엔드    : {0}  (http://localhost:{1})" -f $(if (Test-Alive $backendPid) { "실행 중 (PID $backendPid)" } else { '중지됨' }), $BackendPort)
-    Write-Host ("프론트엔드: {0}  (http://localhost:{1})" -f $(if (Test-Alive $frontendPid) { "실행 중 (PID $frontendPid)" } else { '중지됨' }), $FrontendPort)
+    Write-Host ("DB (Docker)        : {0}{1}" -f (Get-ComposeState 'db'), $dbPortInfo)
+    Write-Host ("백엔드 (로컬)      : {0}  (http://localhost:{1})" -f $(if (Test-Alive $backendPid) { "실행 중 (PID $backendPid)" } else { '중지됨' }), $BackendPort)
+    Write-Host ("프론트엔드 (로컬)  : {0}  (http://localhost:{1})" -f $(if (Test-Alive $frontendPid) { "실행 중 (PID $frontendPid)" } else { '중지됨' }), $FrontendPort)
+    Write-Host ("백엔드 (Docker)    : {0}" -f (Get-ComposeState 'backend'))
+    Write-Host ("프론트엔드 (Docker): {0}" -f (Get-ComposeState 'frontend'))
     Write-Host ''
 }
 
@@ -310,15 +321,40 @@ function Invoke-Stop([switch]$Quiet) {
     Remove-Item $PidFile -ErrorAction SilentlyContinue
     if (-not $Quiet) { Write-Ok '백엔드·프론트엔드 중지 완료' }
 
-    if (-not $KeepDb) {
-        if (-not $Quiet) { Write-Step 'DB 컨테이너 중지 (데이터는 유지)' }
-        Push-Location $Root
-        try { & docker compose stop db *> $null } finally { Pop-Location }
-        if (-not $Quiet) { Write-Ok 'DB 중지 완료' }
+    # Docker 컨테이너: make up 으로 띄운 backend·frontend 도 함께 멈춥니다. stop 은 컨테이너·볼륨을 지우지 않습니다.
+    $services = if ($KeepDb) { @('backend', 'frontend') } else { @('backend', 'frontend', 'db') }
+    & docker info *> $null
+    if ($LASTEXITCODE -ne 0) {
+        if (-not $Quiet) { Write-Warn 'Docker 에 연결할 수 없어 컨테이너는 건드리지 않았습니다.' }
+        return
     }
+    if (-not $Quiet) { Write-Step ("Docker 컨테이너 중지 ({0}, 데이터는 유지)" -f ($services -join ', ')) }
+    Push-Location $Root
+    try { & docker compose stop @services *> $null } finally { Pop-Location }
+    if (-not $Quiet) { Write-Ok 'Docker 컨테이너 중지 완료' }
 }
 
-switch ($Action) {
+# --stop / -stop / stop 을 모두 같은 동작으로 받습니다.
+$requested = @()
+foreach ($token in (@($Action) + @($Rest) | Where-Object { $_ })) {
+    switch ($token.TrimStart('-').ToLowerInvariant()) {
+        'start'   { $requested += 'start' }
+        'stop'    { $requested += 'stop' }
+        'status'  { $requested += 'status' }
+        'keepdb'  { $KeepDb = $true }
+        'keep-db' { $KeepDb = $true }
+        default   { Fail "알 수 없는 옵션입니다: $token  (사용: .\run.ps1 [--start | --stop | --status] [--keep-db])" }
+    }
+}
+if ($Start)  { $requested += 'start' }
+if ($Stop)   { $requested += 'stop' }
+if ($Status) { $requested += 'status' }
+
+$requested = @($requested | Select-Object -Unique)
+if ($requested.Count -gt 1) { Fail "동시에 하나의 동작만 지정할 수 있습니다: $($requested -join ', ')" }
+$command = if ($requested.Count -eq 1) { $requested[0] } else { 'start' }
+
+switch ($command) {
     'start'  { Invoke-Start }
     'stop'   { Invoke-Stop; Invoke-Status }
     'status' { Invoke-Status }
